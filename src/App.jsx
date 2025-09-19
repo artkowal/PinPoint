@@ -1,19 +1,13 @@
 import React, { useState } from "react";
-import SplashScreen from "./components/SplashScreen";
-import MapView from "./components/MapView";
+import SplashScreen from "../src/components/SplashScreen";
+import MapView from "../src/components/map/MapView";
 
-function App() {
+export default function App() {
   const [showMap, setShowMap] = useState(false);
 
-  return (
-    <>
-      {!showMap ? (
-        <SplashScreen onFinish={() => setShowMap(true)} />
-      ) : (
-        <MapView />
-      )}
-    </>
+  return !showMap ? (
+    <SplashScreen onFinish={() => setShowMap(true)} />
+  ) : (
+    <MapView />
   );
 }
-
-export default App;
