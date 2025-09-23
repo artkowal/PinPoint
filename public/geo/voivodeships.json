@@ -115,7 +115,7 @@
         "NAME_1": "Łódź",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Lódzkie"
+        "name": "Łódzkie"
       },
       "type": "Feature"
     },
@@ -201,7 +201,7 @@
         "NAME_1": "Świętokrzyskie",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Swietokrzyskie"
+        "name": "Świętokrzyskie"
       },
       "type": "Feature"
     },
@@ -589,7 +589,7 @@
         "NAME_1": "Lesser Poland",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Malopolskie"
+        "name": "Małopolskie"
       },
       "type": "Feature"
     },
@@ -749,7 +749,7 @@
         "NAME_1": "Lower Silesian",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Dolnoslaskie"
+        "name": "Dolnośląskie"
       },
       "type": "Feature"
     },
@@ -1713,7 +1713,7 @@
         "NAME_1": "Silesian",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Slaskie"
+        "name": "Śląskie"
       },
       "type": "Feature"
     },
@@ -1945,7 +1945,7 @@
         "NAME_1": "Warmian-Masurian",
         "NL_NAME_1": null,
         "TYPE_1": "Województwo",
-        "name": "Warminsko-Mazurskie"
+        "name": "Warmińsko-Mazurskie"
       },
       "type": "Feature"
     },

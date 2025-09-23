@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 
-export const SIDEBAR_WIDTH = 220; // stała szerokość kolumny
+export const SIDEBAR_WIDTH = 220;
 
 function toRgba(hex, a = 1) {
   const h = hex.replace("#", "");
@@ -20,9 +20,9 @@ function toRgba(hex, a = 1) {
 }
 
 export default function Sidebar({
-  voivList = [], // [{ name, feature }]
+  voivList = [],
   selectedName = null,
-  onSelect, // (entry) => void
+  onSelect,
   accent = "#2FE5D2",
   logoSrc = "/logo.png",
   title = "Wybierz województwo",
@@ -63,7 +63,7 @@ export default function Sidebar({
         style={glowB}
       />
 
-      <div className="relative h-full rounded-none md:rounded-r-2xl bg-slate-900/70 backdrop-blur-md ring-1 ring-white/10 shadow-2xl overflow-hidden">
+      <div className="relative h-full rounded-none bg-slate-900/70 backdrop-blur-md ring-1 ring-white/10 shadow-2xl overflow-hidden">
         {/* header */}
         <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
           <img
@@ -71,11 +71,13 @@ export default function Sidebar({
             alt="PinPoint logo"
             className="h-8 w-8 rounded-xl"
           />
-          <div className="font-semibold text-sm text-teal-200">{title}</div>
+          <div className="font-semibold text-sm text-teal-200 flex-1">
+            {title}
+          </div>
         </div>
 
         {/* scrollowalna lista */}
-        <div className="p-2 overflow-auto h-[calc(100%-3.25rem)]">
+        <div className="p-2 overflow-auto h-[calc(100%-4.25rem)]">
           {voivList.length === 0 ? (
             <div className="text-white/60 text-sm px-2 py-1">Ładowanie…</div>
           ) : (

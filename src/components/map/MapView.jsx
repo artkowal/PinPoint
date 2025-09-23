@@ -6,19 +6,26 @@ import {
   Polygon,
   Pane,
   useMap,
+  ZoomControl,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { FaLandmark, FaChurch, FaTree, FaMountain } from "react-icons/fa";
-import Sidebar from "./Sidebar";
+import {
+  FaLandmark,
+  FaChurch,
+  FaTree,
+  FaMountain,
+  FaBars,
+} from "react-icons/fa";
+import Sidebar, { SIDEBAR_WIDTH } from "./Sidebar";
 import RightPanel from "./RightPanel";
 
-// --- Map defaults (Poland) ---
+// --- stałe mapy ---
 const POLAND_CENTER = [52.0, 19.0];
 const POLAND_ZOOM = 6;
 const MAX_BOUNDS = [
-  [48.8, 13.5], // SW
-  [55.2, 24.5], // NE
+  [48.8, 13.5],
+  [55.2, 24.5],
 ];
 const ACCENT = "#2FE5D2";
 const FIT_MAX_ZOOM = 11;
@@ -30,7 +37,7 @@ const TYPE_META = {
   mountain: { label: "Góry", Icon: FaMountain },
 };
 
-// --- bounds z geometrii
+// ===== helpers ===============================================================
 function boundsFromGeometry(geometry) {
   const g = geometry?.type ? geometry : geometry?.geometry || geometry;
   if (!g) return null;
@@ -52,26 +59,21 @@ function boundsFromGeometry(geometry) {
       if (lng > maxLng) maxLng = lng;
     }
   }
-  return L.latLngBounds([
-    [minLat, minLng],
-    [maxLat, maxLng],
-  ]);
+  return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
 }
 
-// --- dopasowanie: center + flyTo (gładka animacja, nieco mniejszy zoom)
+// płynne centrowanie/zbliżenie na wybrane województwo
 function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
   const map = useMap();
-
   useEffect(() => {
     if (!feature) return;
     const b = boundsFromGeometry(feature.geometry || feature);
     if (!b || !b.isValid()) return;
 
     const center = b.getCenter();
-    // większy padding + -1 poziom zoom => odrobinę szerzej
     const padding = L.point(48, 48);
     const computed = map.getBoundsZoom(b, true, padding);
-    const zoom = Math.max(5, Math.min(maxZoom, computed - 1));
+    const zoom = Math.max(5, Math.min(maxZoom, computed - 1)); // odrobinkę szerzej
 
     map.stop();
     map.flyTo(center, zoom, {
@@ -84,11 +86,10 @@ function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
     const id = setTimeout(() => map.invalidateSize(), 320);
     return () => clearTimeout(id);
   }, [feature, map, maxZoom]);
-
   return null;
 }
 
-// --- powrót do widoku PL (po kliknięciu „Powrót”)
+// powrót do ujęcia Polski po kliknięciu „Powrót”
 function FlyHome({ trigger }) {
   const map = useMap();
   useEffect(() => {
@@ -105,23 +106,35 @@ function FlyHome({ trigger }) {
   return null;
 }
 
+// =============================================================================
 export default function MapView() {
   const [voivodeships, setVoivodeships] = useState(null);
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [selectedName, setSelectedName] = useState(null);
+
   const [activeTypes, setActiveTypes] = useState([
     "landmark",
     "church",
     "nature",
     "mountain",
   ]);
-  const [resetTick, setResetTick] = useState(0); // <<< trigger dla powrotu
+
+  // UI
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [resetTick, setResetTick] = useState(0);
   const geoRef = useRef();
 
-  const getName = (feature) =>
-    feature?.properties?.name ||
-    feature?.properties?.NAME_1 ||
-    feature?.properties?.woj ||
+  // na mobile startuj z ukrytym sidebarem
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+  }, []);
+
+  const getName = (f) =>
+    f?.properties?.name ||
+    f?.properties?.NAME_1 ||
+    f?.properties?.woj ||
     "Województwo";
 
   const ringsFromGeometry = (g) => {
@@ -137,16 +150,7 @@ export default function MapView() {
     return rings;
   };
 
-  const WORLD_RECT = useMemo(
-    () => [
-      [85, -180],
-      [85, 180],
-      [-85, 180],
-      [-85, -180],
-    ],
-    []
-  );
-
+  // dane geometrii
   useEffect(() => {
     fetch("/geo/voivodeships.json")
       .then((r) => {
@@ -171,14 +175,19 @@ export default function MapView() {
 
   const selectVoiv = (entry) => {
     if (!entry) return;
-    setSelectedFeature(entry.feature);
-    setSelectedName(entry.name);
+    if (selectedName === entry.name) {
+      // kliknięto drugi raz w to samo województwo → reset
+      resetView();
+    } else {
+      setSelectedFeature(entry.feature);
+      setSelectedName(entry.name);
+    }
   };
 
   const resetView = () => {
     setSelectedFeature(null);
     setSelectedName(null);
-    setResetTick((t) => t + 1); // <<< uruchomi FlyHome
+    setResetTick((t) => t + 1);
   };
 
   const toggleType = (t) =>
@@ -186,6 +195,7 @@ export default function MapView() {
       prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
     );
 
+  // maska „na zewnątrz” województw
   const maskHoles = useMemo(() => {
     if (!voivodeships) return [];
     if (selectedFeature) return ringsFromGeometry(selectedFeature.geometry);
@@ -206,8 +216,12 @@ export default function MapView() {
     });
     layer.on({
       click: () => {
-        setSelectedFeature(feature);
-        setSelectedName(name);
+        if (selectedName === name) {
+          resetView(); // ponowne kliknięcie → powrót
+        } else {
+          setSelectedFeature(feature);
+          setSelectedName(name);
+        }
       },
       mouseover: (e) => e.target.setStyle({ weight: 3, fillOpacity: 0.15 }),
       mouseout: (e) => {
@@ -222,16 +236,49 @@ export default function MapView() {
 
   return (
     <div className="h-screen w-screen flex bg-slate-950">
-      {/* LEWA KOLUMNA */}
-      <Sidebar
-        voivList={voivList}
-        selectedName={selectedName}
-        onSelect={selectVoiv}
-        accent={ACCENT}
-        logoSrc="/logo.png"
+      {/* stały sidebar na desktopie */}
+      {sidebarOpen && (
+        <div
+          className="hidden md:block h-full shrink-0"
+          style={{ width: SIDEBAR_WIDTH }}
+        >
+          <Sidebar
+            voivList={voivList}
+            selectedName={selectedName}
+            onSelect={selectVoiv}
+            accent={ACCENT}
+            logoSrc="/logo.png"
+            onClose={() => setSidebarOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* off-canvas sidebar na mobile */}
+      <div
+        className={`md:hidden fixed inset-y-0 left-0 z-[1100] w-[85vw] max-w-[320px] transform transition-transform duration-300 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <Sidebar
+          voivList={voivList}
+          selectedName={selectedName}
+          onSelect={(e) => {
+            selectVoiv(e);
+            setSidebarOpen(false);
+          }}
+          accent={ACCENT}
+          logoSrc="/logo.png"
+          onClose={() => setSidebarOpen(false)}
+        />
+      </div>
+      <div
+        onClick={() => setSidebarOpen(false)}
+        className={`md:hidden fixed inset-0 z-[1050] bg-black/40 backdrop-blur-sm transition-opacity ${
+          sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        }`}
       />
 
-      {/* PRAWA KOLUMNA: MAPA */}
+      {/* MAPA */}
       <div className="relative flex-1">
         <MapContainer
           center={POLAND_CENTER}
@@ -240,7 +287,7 @@ export default function MapView() {
           maxBounds={MAX_BOUNDS}
           maxBoundsViscosity={0.6}
           className="absolute inset-0"
-          zoomControl
+          zoomControl={false} // domyślne strzałki wyłączone
           scrollWheelZoom
         >
           <TileLayer
@@ -250,11 +297,22 @@ export default function MapView() {
             noWrap
           />
 
+          {/* strzałki zoomu zawsze w lewym-dolnym rogu */}
+          <ZoomControl position="bottomleft" />
+
           {/* Maska */}
           {maskHoles.length > 0 && (
             <Pane name="outside-mask" style={{ zIndex: 350 }}>
               <Polygon
-                positions={[WORLD_RECT, ...maskHoles]}
+                positions={[
+                  [
+                    [85, -180],
+                    [85, 180],
+                    [-85, 180],
+                    [-85, -180],
+                  ],
+                  ...maskHoles,
+                ]}
                 pathOptions={{
                   fill: true,
                   fillOpacity: 0.45,
@@ -285,18 +343,33 @@ export default function MapView() {
             </Pane>
           )}
 
-          {/* Dopasowanie po wyborze (centrowanie + gładkie flyTo) */}
+          {/* dopasowanie i powrót */}
           {selectedFeature && (
             <FitOnSelect feature={selectedFeature} maxZoom={FIT_MAX_ZOOM} />
           )}
-
-          {/* Powrót do ujęcia PL po kliknięciu „Powrót” */}
           <FlyHome trigger={resetTick} />
         </MapContainer>
 
-        {/* PRAWY PANEL */}
+        {/* hamburger: zawsze lewy-górny róg (toggle sidebara) */}
+        <button
+          aria-label="Pokaż/ukryj listę województw"
+          onClick={() => setSidebarOpen((s) => !s)}
+          className="absolute left-3 top-3 z-[1200] rounded-xl bg-slate-900/85 ring-1 ring-white/10 backdrop-blur px-3 py-2 text-white hover:bg-slate-900/95 shadow-lg"
+          title={
+            sidebarOpen ? "Ukryj listę województw" : "Pokaż listę województw"
+          }
+        >
+          <FaBars />
+        </button>
+
+        {/* Panel szczegółów: mobile — center-top POD przyciskiem; desktop — prawa góra */}
         {selectedFeature && (
-          <RightPanel selectedName={selectedName} onBack={resetView}>
+          <RightPanel
+            selectedName={selectedName}
+            onBack={resetView}
+            open
+            accent={ACCENT}
+          >
             <div className="mt-3 text-xs text-white/70">
               Filtr kategorii (przyszłe POI):
             </div>
