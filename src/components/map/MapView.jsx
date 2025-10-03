@@ -19,6 +19,8 @@ import {
 } from "react-icons/fa";
 import Sidebar, { SIDEBAR_WIDTH } from "./Sidebar";
 import RightPanel from "./RightPanel";
+import PlacesLayer from "./PlacesLayer";
+import "./leaflet-custom-icons.css";
 
 // --- stałe mapy ---
 const POLAND_CENTER = [52.0, 19.0];
@@ -73,7 +75,7 @@ function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
     const center = b.getCenter();
     const padding = L.point(48, 48);
     const computed = map.getBoundsZoom(b, true, padding);
-    const zoom = Math.max(5, Math.min(maxZoom, computed - 1)); // odrobinkę szerzej
+    const zoom = Math.max(5, Math.min(maxZoom, computed - 1));
 
     map.stop();
     map.flyTo(center, zoom, {
@@ -82,7 +84,6 @@ function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
       easeLinearity: 0.22,
       noMoveStart: false,
     });
-
     const id = setTimeout(() => map.invalidateSize(), 320);
     return () => clearTimeout(id);
   }, [feature, map, maxZoom]);
@@ -111,7 +112,6 @@ export default function MapView() {
   const [voivodeships, setVoivodeships] = useState(null);
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [selectedName, setSelectedName] = useState(null);
-
   const [activeTypes, setActiveTypes] = useState([
     "landmark",
     "church",
@@ -124,7 +124,6 @@ export default function MapView() {
   const [resetTick, setResetTick] = useState(0);
   const geoRef = useRef();
 
-  // na mobile startuj z ukrytym sidebarem
   useEffect(() => {
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
@@ -152,14 +151,15 @@ export default function MapView() {
 
   // dane geometrii
   useEffect(() => {
-    fetch("/geo/voivodeships.json")
+    const url = `${import.meta.env.BASE_URL || "/"}geo/voivodeships.json`;
+    fetch(url)
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load voivodeships.json");
         return r.json();
       })
       .then((data) => setVoivodeships(data))
       .catch((err) => {
-        console.error("[MapView] Cannot load /geo/voivodeships.json", err);
+        console.error("[MapView] Cannot load geo/voivodeships.json", err);
         setVoivodeships(null);
       });
   }, []);
@@ -176,7 +176,6 @@ export default function MapView() {
   const selectVoiv = (entry) => {
     if (!entry) return;
     if (selectedName === entry.name) {
-      // kliknięto drugi raz w to samo województwo → reset
       resetView();
     } else {
       setSelectedFeature(entry.feature);
@@ -217,7 +216,7 @@ export default function MapView() {
     layer.on({
       click: () => {
         if (selectedName === name) {
-          resetView(); // ponowne kliknięcie → powrót
+          resetView();
         } else {
           setSelectedFeature(feature);
           setSelectedName(name);
@@ -233,6 +232,15 @@ export default function MapView() {
       },
     });
   };
+
+  // BOUNDS wybranego województwa (używane przez PlacesLayer)
+  const selectedBounds = useMemo(
+    () =>
+      selectedFeature
+        ? boundsFromGeometry(selectedFeature.geometry || selectedFeature)
+        : null,
+    [selectedFeature]
+  );
 
   return (
     <div className="h-screen w-screen flex bg-slate-950">
@@ -287,7 +295,7 @@ export default function MapView() {
           maxBounds={MAX_BOUNDS}
           maxBoundsViscosity={0.6}
           className="absolute inset-0"
-          zoomControl={false} // domyślne strzałki wyłączone
+          zoomControl={false}
           scrollWheelZoom
         >
           <TileLayer
@@ -348,9 +356,19 @@ export default function MapView() {
             <FitOnSelect feature={selectedFeature} maxZoom={FIT_MAX_ZOOM} />
           )}
           <FlyHome trigger={resetTick} />
+
+          {/* POI – BBOX+clip do geometrii województwa */}
+          {selectedFeature && selectedName && selectedBounds && (
+            <PlacesLayer
+              bounds={selectedBounds}
+              regionGeom={selectedFeature.geometry} // <— przekazujemy geometrię
+              activeTypes={activeTypes}
+              maxPoints={80}
+            />
+          )}
         </MapContainer>
 
-        {/* hamburger: zawsze lewy-górny róg (toggle sidebara) */}
+        {/* hamburger: lewy-górny róg */}
         <button
           aria-label="Pokaż/ukryj listę województw"
           onClick={() => setSidebarOpen((s) => !s)}
@@ -362,7 +380,7 @@ export default function MapView() {
           <FaBars />
         </button>
 
-        {/* Panel szczegółów: mobile — center-top POD przyciskiem; desktop — prawa góra */}
+        {/* Panel szczegółów */}
         {selectedFeature && (
           <RightPanel
             selectedName={selectedName}
@@ -370,9 +388,7 @@ export default function MapView() {
             open
             accent={ACCENT}
           >
-            <div className="mt-3 text-xs text-white/70">
-              Filtr kategorii (przyszłe POI):
-            </div>
+            <div className="mt-3 text-xs text-white/70">Filtr kategorii:</div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {Object.entries(TYPE_META).map(([key, meta]) => {
                 const active = activeTypes.includes(key);

@@ -1,0 +1,18 @@
+export const OSM_NAMES = {
+  "Dolnośląskie": "województwo dolnośląskie",
+  "Kujawsko-Pomorskie": "województwo kujawsko-pomorskie",
+  "Lubelskie": "województwo lubelskie",
+  "Lubuskie": "województwo lubuskie",
+  "Łódzkie": "województwo łódzkie",
+  "Małopolskie": "województwo małopolskie",
+  "Mazowieckie": "województwo mazowieckie",
+  "Opolskie": "województwo opolskie",
+  "Podkarpackie": "województwo podkarpackie",
+  "Podlaskie": "województwo podlaskie",
+  "Pomorskie": "województwo pomorskie",
+  "Śląskie": "województwo śląskie",
+  "Świętokrzyskie": "województwo świętokrzyskie",
+  "Warmińsko-Mazurskie": "województwo warmińsko-mazurskie",
+  "Wielkopolskie": "województwo wielkopolskie",
+  "Zachodniopomorskie": "województwo zachodniopomorskie",
+};
