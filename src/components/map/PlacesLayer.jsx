@@ -2,62 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { Marker, Popup } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
-import { overpass } from "../../api/api";
+import { wikiQuery } from "../../api/api";
 
+/* ================== Ustawienia ================== */
 const DISABLE_CLUSTER_AT_ZOOM = 15;
+const DEFAULT_RADIUS_M = 10000; // promień geosearch dla pojedynczego „heksa”
+const CONCURRENCY = 5; // równoległość zapytań do Wiki
+const PER_CENTER_LIMIT = 100; // prosimy więcej, później tniemy
 
-// ——— Filtry per kategoria (sterylne i szybkie) ———
-const FILTERS = {
-  landmark: [
-    'node["name"]["tourism"="attraction"]',
-    'node["name"]["tourism"="museum"]',
-    'node["name"]["historic"]',
-    'node["name"]["memorial"]',
-  ],
-  church: ['node["name"]["amenity"="place_of_worship"]'],
-  nature: [
-    'node["name"]["tourism"="viewpoint"]',
-    'node["name"]["natural"="spring"]',
-  ],
-  mountain: ['node["name"]["natural"="peak"]'],
-};
-
-// ——— heurystyka “popularności” do sortowania lokalnie ———
-function scoreTags(tags = {}) {
-  let s = 0;
-  if (tags.wikipedia) s += 4;
-  if (tags.wikidata) s += 3;
-  if (tags.heritage) s += 2;
-  if (tags.tourism === "attraction" || tags.tourism === "museum") s += 2;
-  if (tags.historic || tags.memorial) s += 1;
-  if (tags.amenity === "place_of_worship") s += 1;
-  if (tags.natural === "peak" || tags.tourism === "viewpoint") s += 1;
-  return s;
-}
-
-// ——— detekcja kategorii z tagów ———
-function detectCategory(tags = {}) {
-  if (tags.amenity === "place_of_worship") return "church";
-  if (tags.natural === "peak") return "mountain";
-  if (tags.tourism === "viewpoint" || tags.natural === "spring")
-    return "nature";
-  if (
-    tags.tourism === "attraction" ||
-    tags.historic ||
-    tags.memorial ||
-    tags.tourism === "museum"
-  )
-    return "landmark";
-  return "landmark";
-}
-
-// ——— ikony (CSS już masz) ———
-function iconClassFor(category) {
-  return `ico--${category || "landmark"}`;
-}
-function pinCategoryClass(category) {
-  return `pin--${category || "landmark"}`;
-}
+/* ================== Ikony ================== */
+const iconClassFor = (c) => `ico--${c || "landmark"}`;
+const pinCategoryClass = (c) => `pin--${c || "landmark"}`;
 function createPoiIcon(category = "landmark") {
   return L.divIcon({
     html: `
@@ -66,40 +21,22 @@ function createPoiIcon(category = "landmark") {
         <div class="pin-cap"></div>
         <div class="pin-ico ${iconClassFor(category)}"></div>
         <div class="pin-shadow"></div>
-      </div>
-    `,
+      </div>`,
     className: "pin-anim",
     iconSize: [40, 40],
     iconAnchor: [20, 40],
   });
 }
 function clusterIcon(cluster) {
-  const count = cluster.getChildCount();
   return L.divIcon({
-    html: `<div class="cluster-icon"><span>${count}</span></div>`,
+    html: `<div class="cluster-icon"><span>${cluster.getChildCount()}</span></div>`,
     className: "pin-anim",
     iconSize: [44, 44],
     iconAnchor: [22, 22],
   });
 }
 
-/* =====================  GEOMETRIA & CLIP  ================================= */
-
-// zamiana GeoJSON geometry -> tablica POLIGONÓW, każdy: [outer, hole1, hole2, ...],
-// gdzie ring = [[lat, lng], ...]
-function geometryToPolygons(geom) {
-  if (!geom) return [];
-  const toRing = (ring) => ring.map(([lng, lat]) => [lat, lng]);
-  if (geom.type === "Polygon") {
-    return [geom.coordinates.map(toRing)];
-  }
-  if (geom.type === "MultiPolygon") {
-    return geom.coordinates.map((poly) => poly.map(toRing));
-  }
-  return [];
-}
-
-// klasyczny ray-casting dla jednego ringu (lat,lng)
+/* ================== Geometria: punkt w (multi)poligonie ================== */
 function pointInRing(lat, lng, ring) {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
@@ -107,148 +44,327 @@ function pointInRing(lat, lng, ring) {
       xi = ring[i][1];
     const yj = ring[j][0],
       xj = ring[j][1];
-    const intersect =
-      yi > lat !== yj > lat &&
-      lng < ((xj - xi) * (lat - yi)) / (yj - yi + 0.0) + xi;
-    if (intersect) inside = !inside;
+    const cond =
+      xi > lng !== xj > lng && lat < ((yj - yi) * (lng - xi)) / (xj - xi) + yi;
+    if (cond) inside = !inside;
   }
   return inside;
 }
-
-// punkt-w-polygon (z obsługą „dziur”)
-function pointInPolygons(lat, lng, polygons) {
-  for (const poly of polygons) {
-    if (!poly.length) continue;
-    const outer = poly[0];
-    if (!pointInRing(lat, lng, outer)) continue;
-    // jeżeli w dziurze – odrzucamy
-    let inHole = false;
-    for (let i = 1; i < poly.length; i++) {
-      if (pointInRing(lat, lng, poly[i])) {
-        inHole = true;
-        break;
-      }
-    }
-    if (!inHole) return true;
-  }
-  return false;
+function pointInMultiPolygon(lat, lng, rings) {
+  let inside = false;
+  for (const ring of rings) if (pointInRing(lat, lng, ring)) inside = !inside;
+  return inside;
 }
 
-/* =====================  KOMPONENT  ======================================== */
+/* ================== Klasyfikacja ================== */
+const NEG_ADMIN_STEMS = [
+  "wsie w ",
+  "miejscowości w ",
+  "sołectwa w ",
+  "gminy w ",
+  "powiat ",
+  "miasta w ",
+  "miejscowości powiatu",
+  "miejscowości w powiecie",
+];
+const NEG_TITLE_PREFIX = ["gmina ", "powiat "];
+const lc = (s) => (s || "").toLowerCase();
+const hasAny = (text, arr) => {
+  const t = lc(text);
+  return arr.some((k) => t.includes(k));
+};
+const normCats = (cats = []) => cats.map((c) => lc(c.title || ""));
 
-/**
- * PROPS:
- *  - bounds: L.LatLngBounds (BBOX województwa)
- *  - regionGeom: GeoJSON geometry (dokładna geometria województwa)
- *  - activeTypes: ["landmark","church","nature","mountain"]
- *  - maxPoints: twardy limit łączny
- */
-export default function PlacesLayer({
-  bounds,
-  regionGeom,
-  activeTypes,
-  maxPoints = 100,
-}) {
-  const [points, setPoints] = useState([]);
+function isAdministrative(title, cats) {
+  const t = lc(title);
+  if (NEG_TITLE_PREFIX.some((p) => t.startsWith(p))) return true;
+  const c = normCats(cats);
+  return c.some((name) =>
+    NEG_ADMIN_STEMS.some((stem) => name.startsWith(stem))
+  );
+}
 
-  const polygons = useMemo(() => geometryToPolygons(regionGeom), [regionGeom]);
+const POS_CHURCH = [
+  "kościół",
+  "bazylika",
+  "katedra",
+  "cerkiew",
+  "sanktuarium",
+  "kaplica",
+  "parafia",
+];
+const POS_MOUNTAIN = ["góra", "szczyt", "mount", "mt.", "peak", "mountain"];
+const POS_NATURE = [
+  "park narodowy",
+  "park krajobrazowy",
+  "rezerwat",
+  "pomnik przyrody",
+  "punkt widokowy",
+  "viewpoint",
+  "jezioro",
+  "lake",
+  "wodospad",
+  "waterfall",
+];
+const POS_LANDMARK = [
+  "zamek",
+  "pałac",
+  "dwór",
+  "ruiny",
+  "twierdza",
+  "fort",
+  "bastion",
+  "bunkier",
+  "skansen",
+  "muzeum",
+  "synagoga",
+  "ratusz",
+  "wieża",
+  "latarnia morska",
+  "most",
+  "wiadukt",
+  "akwedukt",
+  "amfiteatr",
+  "teatr",
+  "opera",
+  "filharmonia",
+  "kopalnia",
+  "sztolnia",
+  "młyn",
+  "spichlerz",
+  "kamienica",
+  "mury obronne",
+  "rynek",
+  "starówka",
+  "zabytek",
+];
 
-  // siatka kafli po BBOX (małe szybkie zapytania)
-  const tiles = useMemo(() => {
-    if (!bounds) return [];
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
-    const S = sw.lat,
-      W = sw.lng,
-      N = ne.lat,
-      E = ne.lng;
+function classifyFromPage(p) {
+  const title = p.title || "";
+  const desc = lc(p.description || "");
+  const cats = p.categories || [];
+  if (isAdministrative(title, cats)) return null;
 
-    const rows = 4,
-      cols = 3; // 12 kafli
-    const dLat = (N - S) / rows;
-    const dLng = (E - W) / cols;
+  const text = `${lc(title)} ${desc}`;
+  const catText = normCats(cats).join(" ");
+
+  if (hasAny(text, POS_CHURCH) || hasAny(catText, POS_CHURCH)) return "church";
+  if (hasAny(text, POS_MOUNTAIN) || hasAny(catText, POS_MOUNTAIN))
+    return "mountain";
+  if (hasAny(text, POS_NATURE) || hasAny(catText, POS_NATURE)) return "nature";
+  if (hasAny(text, POS_LANDMARK) || hasAny(catText, POS_LANDMARK))
+    return "landmark";
+
+  return null;
+}
+
+const score = (p) =>
+  (p?.pageprops?.wikibase_item ? 3 : 0) +
+  (p?.description ? 2 : 0) +
+  (p?.thumbnail?.source ? 1 : 0);
+
+/* ================== Siatka heksagonalna centrów ================== */
+function hexCenters(bounds, radiusM, rings, minCount = 24) {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const S = sw.lat,
+    W = sw.lng,
+    N = ne.lat,
+    E = ne.lng;
+  let step = radiusM * 0.8;
+  const midLat = (S + N) / 2;
+
+  const toLatDeg = (m) => m / 111000;
+  const toLngDeg = (m) => m / (111000 * Math.cos((midLat * Math.PI) / 180));
+
+  function build(stepMeters) {
+    const dx = toLngDeg(stepMeters * 2);
+    const dy = toLatDeg(Math.sqrt(3) * stepMeters);
     const out = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const s = S + r * dLat;
-        const n = S + (r + 1) * dLat;
-        const w = W + c * dLng;
-        const e = W + (c + 1) * dLng;
-        out.push([s, w, n, e]);
+    let row = 0;
+    for (let lat = S + dy / 2; lat <= N + 1e-9; lat += dy, row++) {
+      const offset = row % 2 === 0 ? 0 : dx / 2;
+      for (let lng = W + offset; lng <= E + 1e-9; lng += dx) {
+        if (!rings.length || pointInMultiPolygon(lat, lng, rings))
+          out.push([lat, lng]);
       }
     }
     return out;
-  }, [bounds]);
+  }
 
-  // union wzorców aktywnych kategorii
-  const patterns = useMemo(() => {
-    const uniq = new Set();
-    for (const t of activeTypes || []) {
-      for (const p of FILTERS[t] || []) uniq.add(p);
+  let centers = build(step);
+  for (let i = 0; i < 3 && centers.length < minCount; i++) {
+    step *= 0.75;
+    centers = build(step);
+  }
+  return centers;
+}
+
+/* ================== Utils i cache ================== */
+const REGION_CACHE = new Map(); // regionKey -> { all: Array<PointWithScore> }
+
+const buildParams = (obj) => {
+  const p = new URLSearchParams({ origin: "*", format: "json", ...obj });
+  return Object.fromEntries(p.entries()); // dla axios: params jako obiekt
+};
+
+/* ================== Komponent ================== */
+export default function PlacesLayer({
+  regionKey,
+  bounds,
+  rings,
+  activeTypes,
+  perCategoryLimit = 50,
+  radius = DEFAULT_RADIUS_M,
+  onLoadingChange = () => {},
+}) {
+  const [points, setPoints] = useState([]);
+
+  const centers = useMemo(
+    () => (bounds ? hexCenters(bounds, radius, rings, 24) : []),
+    [bounds, radius, rings]
+  );
+  const active = useMemo(() => new Set(activeTypes || []), [activeTypes]);
+
+  const applyFilterAndLimit = (arr, actSet, limitPerCat) => {
+    const byCat = new Map();
+    for (const p of arr || []) {
+      if (!actSet.has(p.category)) continue;
+      if (!byCat.has(p.category)) byCat.set(p.category, []);
+      byCat.get(p.category).push(p);
     }
-    return Array.from(uniq);
-  }, [activeTypes]);
+    const out = [];
+    for (const [, list] of byCat) {
+      list.sort((a, b) => (b.score || 0) - (a.score || 0));
+      out.push(...list.slice(0, limitPerCat));
+    }
+    return out.sort((a, b) => (b.score || 0) - (a.score || 0));
+  };
+
+  // Filtrowanie z cache (bez requestów)
+  useEffect(() => {
+    const cached = REGION_CACHE.get(regionKey);
+    if (cached?.all) {
+      setPoints(applyFilterAndLimit(cached.all, active, perCategoryLimit));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionKey, active, perCategoryLimit]);
 
   useEffect(() => {
-    if (!tiles.length || !patterns.length || !polygons.length) {
+    if (!centers.length || !rings?.length) {
       setPoints([]);
+      onLoadingChange(false);
       return;
     }
 
-    let canceled = false;
-    const perTile = Math.max(5, Math.ceil(maxPoints / tiles.length) * 3);
+    const cached = REGION_CACHE.get(regionKey);
+    if (cached?.all) {
+      setPoints(applyFilterAndLimit(cached.all, active, perCategoryLimit));
+      onLoadingChange(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
 
     (async () => {
-      const seen = new Map(); // id -> point
-      for (let i = 0; i < tiles.length; i++) {
-        if (canceled) break;
-        if (seen.size >= maxPoints) break;
+      onLoadingChange(true);
 
-        const [s, w, n, e] = tiles[i];
-        const q = `
-          [out:json][timeout:20];
-          (
-            ${patterns.map((p) => `${p}(${s},${w},${n},${e});`).join("\n")}
-          );
-          out tags center qt ${perTile};
-        `;
-        try {
-          const res = await overpass(q);
-          const els = res.data?.elements || [];
-          for (const el of els) {
-            const lat = el.lat ?? el.center?.lat;
-            const lng = el.lon ?? el.center?.lon;
-            if (lat == null || lng == null) continue;
-            // precyzyjny CLIP do geometrii województwa:
-            if (!pointInPolygons(lat, lng, polygons)) continue;
-            if (seen.has(el.id)) continue;
+      const seen = new Map();
+      let idx = 0;
 
-            const tags = el.tags || {};
-            const name = tags.name || "Bez nazwy";
-            const category = detectCategory(tags);
-            seen.set(el.id, { id: el.id, lat, lng, name, tags, category });
+      const fetchCenter = async (centerIdx) => {
+        const [lat, lng] = centers[centerIdx];
+        const params = buildParams({
+          action: "query",
+          generator: "geosearch",
+          ggscoord: `${lat}|${lng}`,
+          ggsradius: String(radius),
+          ggsnamespace: "0",
+          ggslimit: String(PER_CENTER_LIMIT),
+          prop: "coordinates|pageimages|description|pageprops|info|categories",
+          clshow: "!hidden",
+          cllimit: "50",
+          piprop: "thumbnail",
+          pithumbsize: "120",
+          inprop: "url",
+        });
+
+        const res = await wikiQuery(params, controller.signal);
+        const raw = Object.values(res?.data?.query?.pages || []);
+
+        for (const p of raw) {
+          const coord = (p.coordinates || [])[0];
+          if (!coord) continue;
+          const { lat: plat, lon: plng } = coord;
+          if (plat == null || plng == null) continue;
+          if (!pointInMultiPolygon(plat, plng, rings)) continue;
+
+          const category = classifyFromPage(p);
+          if (!category) continue;
+
+          const sc = score(p);
+          const prev = seen.get(p.pageid);
+          if (!prev || sc > prev.score) {
+            seen.set(p.pageid, {
+              id: p.pageid,
+              lat: plat,
+              lng: plng,
+              name: p.title,
+              category,
+              description: p.description,
+              thumbnail: p.thumbnail,
+              url: p.fullurl,
+              score: sc,
+            });
           }
+        }
+      };
 
-          const list = Array.from(seen.values())
-            .sort((a, b) => scoreTags(b.tags) - scoreTags(a.tags))
-            .slice(0, maxPoints);
-          setPoints(list);
-        } catch {
-          // pomijamy pojedynczy kafel (np. 429) i lecimy dalej
+      async function worker() {
+        while (!cancelled && idx < centers.length) {
+          const my = idx++;
+          try {
+            await fetchCenter(my);
+          } catch {
+            /* ignoruj pojedyncze błędy */
+          }
         }
       }
-    })();
+
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+      if (!cancelled) {
+        const all = Array.from(seen.values()).sort(
+          (a, b) => (b.score || 0) - (a.score || 0)
+        );
+        REGION_CACHE.set(regionKey, { all });
+        const filtered = applyFilterAndLimit(all, active, perCategoryLimit);
+        setPoints(filtered);
+        onLoadingChange(false);
+      }
+    })().catch(() => {
+      if (!cancelled) {
+        setPoints([]);
+        onLoadingChange(false);
+      }
+    });
 
     return () => {
-      canceled = true;
+      cancelled = true;
+      controller.abort();
+      onLoadingChange(false);
     };
-  }, [tiles, patterns, polygons, maxPoints]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [regionKey, centers, rings, active, perCategoryLimit, radius]);
 
   if (!points.length) return null;
 
   return (
     <MarkerClusterGroup
-      key={patterns.join("|")}
+      key={`${regionKey}|${centers.length}|${[...active]
+        .sort()
+        .join(",")}|${perCategoryLimit}`}
       chunkedLoading
       spiderfyOnMaxZoom
       showCoverageOnHover={false}
@@ -263,12 +379,29 @@ export default function PlacesLayer({
           icon={createPoiIcon(p.category)}
         >
           <Popup>
-            <div className="flex items-center gap-3 min-w-[180px]">
-              <div className="text-sm font-semibold flex-1">{p.name}</div>
+            <div className="flex items-center gap-3 min-w-[200px]">
+              <div className="flex-1">
+                <div className="text-sm font-semibold">{p.name}</div>
+                {p.description && (
+                  <div className="text-xs opacity-80">{p.description}</div>
+                )}
+              </div>
               <div className={`popup-ico-wrap ${pinCategoryClass(p.category)}`}>
-                <div className={`popup-ico ${iconClassFor(p.category)}`}></div>
+                <div className={`popup-ico ${iconClassFor(p.category)}`} />
               </div>
             </div>
+            {p.url && (
+              <div className="mt-2">
+                <a
+                  className="text-cyan-300 hover:underline text-xs"
+                  href={p.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Otwórz w Wikipedii
+                </a>
+              </div>
+            )}
           </Popup>
         </Marker>
       ))}

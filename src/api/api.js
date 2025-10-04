@@ -1,39 +1,38 @@
 import axios from "axios";
 
-const ENDPOINTS = [
-  "https://overpass.kumi.systems/api",
-  "https://overpass-api.de/api",
-  "https://overpass.openstreetmap.ru/api",
-];
+/**
+ * Klient do Wikipedia API (PL), z domyślnymi parametrami i wsparciem AbortController.
+ * Używaj: wikiQuery({ action: "query", ... }, signal)
+ */
+export const WIKI_ENDPOINT = "https://pl.wikipedia.org/w/api.php";
 
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+export async function wikiQuery(params = {}, signal) {
+  // MediaWiki CORS wymaga origin=*
+  const finalParams = {
+    origin: "*",
+    format: "json",
+    ...params,
+  };
 
-export async function overpass(query, signal) {
-  const q = query.replace(/\n\s+/g, " ").trim();
-
+  // mały retry na wypadek flakiness (1 dodatkowa próba)
   let lastErr = null;
-  for (let i = 0; i < ENDPOINTS.length; i++) {
-    const baseURL = ENDPOINTS[i];
+  for (let i = 0; i < 2; i++) {
     try {
-      console.debug(`[Overpass] ${baseURL}/interpreter?data=`, q);
-      const res = await axios.get(`${baseURL}/interpreter`, {
-        params: { data: q },
-        timeout: 60000,
+      const res = await axios.get(WIKI_ENDPOINT, {
+        params: finalParams,
+        timeout: 20000,
         signal,
       });
       return res;
     } catch (err) {
       lastErr = err;
-      if (err?.name === "CanceledError" || err?.code === "ERR_CANCELED")
-        throw err;
       const status = err?.response?.status;
+      // przy 4xx (poza 429) nie ma sensu ponawiać
       if (status && status < 500 && status !== 429) break;
-      await sleep(350);
+      await new Promise((r) => setTimeout(r, 250));
     }
   }
-  throw lastErr || new Error("Overpass request failed");
+  throw lastErr || new Error("Wikipedia request failed");
 }
 
-export default { overpass };
+export default { wikiQuery };

@@ -20,9 +20,9 @@ import {
 import Sidebar, { SIDEBAR_WIDTH } from "./Sidebar";
 import RightPanel from "./RightPanel";
 import PlacesLayer from "./PlacesLayer";
+import LoadingOverlay from "./LoadingOverlay";
 import "./leaflet-custom-icons.css";
 
-// --- stałe mapy ---
 const POLAND_CENTER = [52.0, 19.0];
 const POLAND_ZOOM = 6;
 const MAX_BOUNDS = [
@@ -63,8 +63,20 @@ function boundsFromGeometry(geometry) {
   }
   return L.latLngBounds([minLat, minLng], [maxLat, maxLng]);
 }
+function ringsFromGeometry(g) {
+  const rings = [];
+  if (!g) return rings;
+  if (g.type === "Polygon") {
+    for (const ring of g.coordinates)
+      rings.push(ring.map(([lng, lat]) => [lat, lng]));
+  } else if (g.type === "MultiPolygon") {
+    for (const poly of g.coordinates)
+      for (const ring of poly) rings.push(ring.map(([lng, lat]) => [lat, lng]));
+  }
+  return rings;
+}
 
-// płynne centrowanie/zbliżenie na wybrane województwo
+// płynne centrowanie/zbliżenie
 function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
   const map = useMap();
   useEffect(() => {
@@ -82,15 +94,12 @@ function FitOnSelect({ feature, maxZoom = FIT_MAX_ZOOM }) {
       animate: true,
       duration: 0.95,
       easeLinearity: 0.22,
-      noMoveStart: false,
     });
     const id = setTimeout(() => map.invalidateSize(), 320);
     return () => clearTimeout(id);
   }, [feature, map, maxZoom]);
   return null;
 }
-
-// powrót do ujęcia Polski po kliknięciu „Powrót”
 function FlyHome({ trigger }) {
   const map = useMap();
   useEffect(() => {
@@ -122,12 +131,12 @@ export default function MapView() {
   // UI
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [resetTick, setResetTick] = useState(0);
+  const [poiLoading, setPoiLoading] = useState(false); // overlay ładowania
   const geoRef = useRef();
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
+    if (typeof window !== "undefined" && window.innerWidth < 768)
       setSidebarOpen(false);
-    }
   }, []);
 
   const getName = (f) =>
@@ -135,19 +144,6 @@ export default function MapView() {
     f?.properties?.NAME_1 ||
     f?.properties?.woj ||
     "Województwo";
-
-  const ringsFromGeometry = (g) => {
-    const rings = [];
-    if (!g) return rings;
-    if (g.type === "Polygon")
-      for (const ring of g.coordinates)
-        rings.push(ring.map(([lng, lat]) => [lat, lng]));
-    if (g.type === "MultiPolygon")
-      for (const poly of g.coordinates)
-        for (const ring of poly)
-          rings.push(ring.map(([lng, lat]) => [lat, lng]));
-    return rings;
-  };
 
   // dane geometrii
   useEffect(() => {
@@ -176,23 +172,14 @@ export default function MapView() {
   const selectVoiv = (entry) => {
     if (!entry) return;
     if (selectedName === entry.name) {
-      resetView();
+      setSelectedFeature(null);
+      setSelectedName(null);
+      setResetTick((t) => t + 1);
     } else {
       setSelectedFeature(entry.feature);
       setSelectedName(entry.name);
     }
   };
-
-  const resetView = () => {
-    setSelectedFeature(null);
-    setSelectedName(null);
-    setResetTick((t) => t + 1);
-  };
-
-  const toggleType = (t) =>
-    setActiveTypes((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
-    );
 
   // maska „na zewnątrz” województw
   const maskHoles = useMemo(() => {
@@ -204,41 +191,15 @@ export default function MapView() {
     return holes;
   }, [voivodeships, selectedFeature]);
 
-  const onEachVoiv = (feature, layer) => {
-    const name = getName(feature);
-    layer.bindTooltip(name, {
-      sticky: true,
-      direction: "center",
-      opacity: 0.85,
-      className:
-        "!bg-slate-900/80 !text-white !rounded-xl !px-2 !py-1 !border !border-white/10",
-    });
-    layer.on({
-      click: () => {
-        if (selectedName === name) {
-          resetView();
-        } else {
-          setSelectedFeature(feature);
-          setSelectedName(name);
-        }
-      },
-      mouseover: (e) => e.target.setStyle({ weight: 3, fillOpacity: 0.15 }),
-      mouseout: (e) => {
-        try {
-          geoRef.current?.resetStyle(e.target);
-        } catch {
-          e.target.setStyle({ weight: 2, fillOpacity: 0.08 });
-        }
-      },
-    });
-  };
-
-  // BOUNDS wybranego województwa (używane przez PlacesLayer)
   const selectedBounds = useMemo(
     () =>
       selectedFeature
         ? boundsFromGeometry(selectedFeature.geometry || selectedFeature)
         : null,
+    [selectedFeature]
+  );
+  const selectedRings = useMemo(
+    () => (selectedFeature ? ringsFromGeometry(selectedFeature.geometry) : []),
     [selectedFeature]
   );
 
@@ -305,7 +266,6 @@ export default function MapView() {
             noWrap
           />
 
-          {/* strzałki zoomu zawsze w lewym-dolnym rogu */}
           <ZoomControl position="bottomleft" />
 
           {/* Maska */}
@@ -346,33 +306,74 @@ export default function MapView() {
                   fillOpacity: 0.08,
                   fillColor: ACCENT,
                 })}
-                onEachFeature={onEachVoiv}
+                onEachFeature={(feature, layer) => {
+                  const name =
+                    feature?.properties?.name ||
+                    feature?.properties?.NAME_1 ||
+                    "Województwo";
+                  layer.bindTooltip(name, {
+                    sticky: true,
+                    direction: "center",
+                    opacity: 0.85,
+                    className:
+                      "!bg-slate-900/80 !text-white !rounded-xl !px-2 !py-1 !border !border-white/10",
+                  });
+                  layer.on({
+                    click: () => {
+                      if (selectedName === name) {
+                        setSelectedFeature(null);
+                        setSelectedName(null);
+                        setResetTick((t) => t + 1);
+                      } else {
+                        setSelectedFeature(feature);
+                        setSelectedName(name);
+                      }
+                    },
+                    mouseover: (e) =>
+                      e.target.setStyle({ weight: 3, fillOpacity: 0.15 }),
+                    mouseout: (e) => {
+                      try {
+                        geoRef.current?.resetStyle(e.target);
+                      } catch {
+                        e.target.setStyle({ weight: 2, fillOpacity: 0.08 });
+                      }
+                    },
+                  });
+                }}
               />
             </Pane>
           )}
 
-          {/* dopasowanie i powrót */}
           {selectedFeature && (
             <FitOnSelect feature={selectedFeature} maxZoom={FIT_MAX_ZOOM} />
           )}
           <FlyHome trigger={resetTick} />
 
-          {/* POI – BBOX+clip do geometrii województwa */}
+          {/* POI – Wikipedia + cache */}
           {selectedFeature && selectedName && selectedBounds && (
             <PlacesLayer
+              regionKey={selectedName}
               bounds={selectedBounds}
-              regionGeom={selectedFeature.geometry} // <— przekazujemy geometrię
+              rings={selectedRings}
               activeTypes={activeTypes}
-              maxPoints={80}
+              perCategoryLimit={50}
+              onLoadingChange={setPoiLoading}
             />
           )}
         </MapContainer>
 
-        {/* hamburger: lewy-górny róg */}
+        <LoadingOverlay
+          show={!!selectedFeature && poiLoading}
+          text="Ładowanie miejsc…"
+          accent={ACCENT}
+          zIndex={1500}
+        />
+
+        {/* hamburger */}
         <button
           aria-label="Pokaż/ukryj listę województw"
           onClick={() => setSidebarOpen((s) => !s)}
-          className="absolute left-3 top-3 z-[1200] rounded-xl bg-slate-900/85 ring-1 ring-white/10 backdrop-blur px-3 py-2 text-white hover:bg-slate-900/95 shadow-lg"
+          className="absolute left-3 top-3 z-[1500] rounded-xl bg-slate-900/85 ring-1 ring-white/10 backdrop-blur px-3 py-2 text-white hover:bg-slate-900/95 shadow-lg"
           title={
             sidebarOpen ? "Ukryj listę województw" : "Pokaż listę województw"
           }
@@ -380,11 +381,15 @@ export default function MapView() {
           <FaBars />
         </button>
 
-        {/* Panel szczegółów */}
+        {/* Panel filtrów */}
         {selectedFeature && (
           <RightPanel
             selectedName={selectedName}
-            onBack={resetView}
+            onBack={() => {
+              setSelectedFeature(null);
+              setSelectedName(null);
+              setResetTick((t) => t + 1);
+            }}
             open
             accent={ACCENT}
           >
@@ -396,7 +401,13 @@ export default function MapView() {
                 return (
                   <button
                     key={key}
-                    onClick={() => toggleType(key)}
+                    onClick={() =>
+                      setActiveTypes((prev) =>
+                        prev.includes(key)
+                          ? prev.filter((x) => x !== key)
+                          : [...prev, key]
+                      )
+                    }
                     className={`flex items-center gap-2 px-2 py-1 rounded-lg text-sm transition ${
                       active
                         ? "bg-white/10 text-white"
