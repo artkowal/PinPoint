@@ -1,4 +1,6 @@
+// src/components/map/Sidebar.jsx
 import React, { useMemo } from "react";
+import artKowalLogo from "../../assets/artkowal-logo-white.png";
 
 export const SIDEBAR_WIDTH = 220;
 
@@ -63,21 +65,23 @@ export default function Sidebar({
         style={glowB}
       />
 
-      <div className="relative h-full rounded-none bg-slate-900/70 backdrop-blur-md ring-1 ring-white/10 shadow-2xl overflow-hidden">
-        {/* header */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3">
+      {/* Korpus sidebara */}
+      <div className="relative h-full rounded-none bg-slate-900/70 backdrop-blur-md ring-1 ring-white/10 shadow-2xl overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-3 flex-none">
           <img
             src={logoSrc}
             alt="PinPoint logo"
             className="h-8 w-8 rounded-xl"
+            draggable="false"
           />
           <div className="font-semibold text-sm text-teal-200 flex-1">
             {title}
           </div>
         </div>
 
-        {/* scrollowalna lista */}
-        <div className="p-2 overflow-auto h-[calc(100%-4.25rem)]">
+        {/* Lista (scroll) */}
+        <div className="p-2 overflow-auto flex-1">
           {voivList.length === 0 ? (
             <div className="text-white/60 text-sm px-2 py-1">Ładowanie…</div>
           ) : (
@@ -103,6 +107,24 @@ export default function Sidebar({
               })}
             </ul>
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-none border-t border-white/10">
+          <div className="px-5 py-2 flex items-center gap-2">
+            <img
+              src={artKowalLogo}
+              alt="artKowal"
+              className="h-4 w-auto opacity-90"
+              draggable="false"
+            />
+            <div className="leading-tight">
+              <div className="text-[11px] font-medium text-white/85 tracking-wide">
+                artKowal
+              </div>
+              <div className="text-[10px] text-white/60">© 2025</div>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
