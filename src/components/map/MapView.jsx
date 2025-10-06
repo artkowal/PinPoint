@@ -21,6 +21,7 @@ import Sidebar, { SIDEBAR_WIDTH } from "./Sidebar";
 import RightPanel from "./RightPanel";
 import PlacesLayer from "./PlacesLayer";
 import LoadingOverlay from "./LoadingOverlay";
+import AboutFab from "./AboutFab";
 import "./leaflet-custom-icons.css";
 
 const POLAND_CENTER = [52.0, 19.0];
@@ -421,6 +422,10 @@ export default function MapView() {
             </div>
           </RightPanel>
         )}
+
+        <div className="relative flex-1">
+          <AboutFab accent="#2FE5D2" />
+        </div>
       </div>
     </div>
   );
