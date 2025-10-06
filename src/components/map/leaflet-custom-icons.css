@@ -146,8 +146,8 @@
 
 /* === Ikona w Popupie ====================================================== */
 .popup-ico-wrap {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 9999px;
   background: var(--pin-color, #06b6d4);
   border: 2px solid #fff;

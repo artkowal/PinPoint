@@ -299,6 +299,8 @@ export default function MapView() {
           {voivodeships && (
             <Pane name="voiv" style={{ zIndex: 450 }}>
               <GeoJSON
+                /* <<< ważne: remount przy zmianie wyboru, żeby odświeżyć bindTooltip */
+                key={selectedName || "all"}
                 ref={geoRef}
                 data={voivodeships}
                 style={() => ({
@@ -312,16 +314,27 @@ export default function MapView() {
                     feature?.properties?.name ||
                     feature?.properties?.NAME_1 ||
                     "Województwo";
-                  layer.bindTooltip(name, {
-                    sticky: true,
-                    direction: "center",
-                    opacity: 0.85,
-                    className:
-                      "!bg-slate-900/80 !text-white !rounded-xl !px-2 !py-1 !border !border-white/10",
-                  });
+                  const isSelected = selectedName === name;
+
+                  // Tooltip tylko dla niewybranego województwa
+                  if (!isSelected) {
+                    layer.bindTooltip(name, {
+                      sticky: true,
+                      direction: "center",
+                      opacity: 0.85,
+                      className:
+                        "!bg-slate-900/80 !text-white !rounded-xl !px-2 !py-1 !border !border-white/10",
+                    });
+                  } else {
+                    // na wszelki wypadek domknij, gdyby był wcześniej zbindowany
+                    if (typeof layer.closeTooltip === "function") {
+                      layer.closeTooltip();
+                    }
+                  }
+
                   layer.on({
                     click: () => {
-                      if (selectedName === name) {
+                      if (isSelected) {
                         setSelectedFeature(null);
                         setSelectedName(null);
                         setResetTick((t) => t + 1);
@@ -330,8 +343,15 @@ export default function MapView() {
                         setSelectedName(name);
                       }
                     },
-                    mouseover: (e) =>
-                      e.target.setStyle({ weight: 3, fillOpacity: 0.15 }),
+                    mouseover: (e) => {
+                      e.target.setStyle({ weight: 3, fillOpacity: 0.15 });
+                      if (
+                        isSelected &&
+                        typeof e?.target?.closeTooltip === "function"
+                      ) {
+                        e.target.closeTooltip();
+                      }
+                    },
                     mouseout: (e) => {
                       try {
                         geoRef.current?.resetStyle(e.target);

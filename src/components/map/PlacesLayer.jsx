@@ -247,7 +247,6 @@ export default function PlacesLayer({
     if (cached?.all) {
       setPoints(applyFilterAndLimit(cached.all, active, perCategoryLimit));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [regionKey, active, perCategoryLimit]);
 
   useEffect(() => {
@@ -380,14 +379,14 @@ export default function PlacesLayer({
         >
           <Popup>
             <div className="flex items-center gap-3 min-w-[200px]">
+              <div className={`popup-ico-wrap ${pinCategoryClass(p.category)}`}>
+                <div className={`popup-ico ${iconClassFor(p.category)}`} />
+              </div>
               <div className="flex-1">
                 <div className="text-sm font-semibold">{p.name}</div>
                 {p.description && (
                   <div className="text-xs opacity-80">{p.description}</div>
                 )}
-              </div>
-              <div className={`popup-ico-wrap ${pinCategoryClass(p.category)}`}>
-                <div className={`popup-ico ${iconClassFor(p.category)}`} />
               </div>
             </div>
             {p.url && (
