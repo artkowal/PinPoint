@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FaQuestion, FaTimes } from "react-icons/fa";
-import artKowalLogo from "../../assets/artkowal-logo-white.png";
+import artKowalLogo from "../../assets/artKowal-logo-white.png";
 
 /* ===== helpers ===== */
 function toRgba(hex, a = 1) {
