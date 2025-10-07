@@ -1,6 +1,7 @@
 // src/components/map/Sidebar.jsx
 import React, { useMemo } from "react";
 import artKowalLogo from "../../assets/artkowal-logo-white.png";
+import appLogo from "../../assets/logo.png";
 
 export const SIDEBAR_WIDTH = 220;
 
@@ -26,7 +27,7 @@ export default function Sidebar({
   selectedName = null,
   onSelect,
   accent = "#2FE5D2",
-  logoSrc = "/logo.png",
+  logoSrc = appLogo,
   title = "Wybierz województwo",
 }) {
   const glowA = useMemo(

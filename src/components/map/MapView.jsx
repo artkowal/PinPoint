@@ -22,6 +22,7 @@ import RightPanel from "./RightPanel";
 import PlacesLayer from "./PlacesLayer";
 import LoadingOverlay from "./LoadingOverlay";
 import AboutFab from "./AboutFab";
+import appLogo from "../../assets/logo.png";
 import "./leaflet-custom-icons.css";
 
 const POLAND_CENTER = [52.0, 19.0];
@@ -217,7 +218,7 @@ export default function MapView() {
             selectedName={selectedName}
             onSelect={selectVoiv}
             accent={ACCENT}
-            logoSrc="/logo.png"
+            logoSrc={appLogo}
             onClose={() => setSidebarOpen(false)}
           />
         </div>
@@ -237,7 +238,7 @@ export default function MapView() {
             setSidebarOpen(false);
           }}
           accent={ACCENT}
-          logoSrc="/logo.png"
+          logoSrc={appLogo}
           onClose={() => setSidebarOpen(false)}
         />
       </div>

@@ -1,23 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { FaLandmark, FaChurch, FaTree, FaMountain } from "react-icons/fa";
+import appLogo from "../assets/logo.png";
 
 const icons = [FaLandmark, FaChurch, FaTree, FaMountain];
 
 export default function SplashScreen({
   onFinish,
-  duration = 2600, // ms – snappy
+  duration = 2600,
   iconCycleMs = 350,
   appName = "PinPoint",
-  logoSrc = "/logo.png", // public/logo.png
   accent = "#2FE5D2",
   showSkip = true,
 }) {
   const [currentIconIndex, setCurrentIconIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [imgOk, setImgOk] = useState(true);
   const doneRef = useRef(false);
 
-  // helper: #RRGGBB -> rgba()
   const toRgba = (hex, a = 1) => {
     const h = hex.replace("#", "");
     const n = parseInt(
@@ -35,7 +35,6 @@ export default function SplashScreen({
     return `rgba(${r}, ${g}, ${b}, ${a})`;
   };
 
-  // system motion preference
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const set = () => setReduceMotion(mq.matches);
@@ -44,7 +43,6 @@ export default function SplashScreen({
     return () => mq.removeEventListener?.("change", set);
   }, []);
 
-  // cycle icons
   useEffect(() => {
     if (reduceMotion) return;
     const id = setInterval(
@@ -54,14 +52,15 @@ export default function SplashScreen({
     return () => clearInterval(id);
   }, [iconCycleMs, reduceMotion]);
 
-  // simple progress loop
   useEffect(() => {
     const start = Date.now();
     const id = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const p = Math.min(100, Math.round((elapsed / duration) * 100));
+      const p = Math.min(
+        100,
+        Math.round(((Date.now() - start) / duration) * 100)
+      );
       setProgress(p);
-      if (elapsed >= duration) {
+      if (p >= 100) {
         clearInterval(id);
         finish();
       }
@@ -85,7 +84,6 @@ export default function SplashScreen({
 
   return (
     <div className="relative w-screen h-screen overflow-hidden flex items-center justify-center bg-slate-950 text-white">
-      {/* teal glow background */}
       <div
         aria-hidden
         className="pointer-events-none absolute -top-24 -left-24 h-[28rem] w-[28rem] rounded-full blur-3xl opacity-40"
@@ -107,19 +105,19 @@ export default function SplashScreen({
         }}
       />
 
-      {/* compact card */}
       <div
         className="relative z-10 flex w-[min(92vw,420px)] flex-col items-center gap-4 rounded-2xl bg-slate-900/70 p-6 backdrop-blur-md ring-1 ring-white/10 shadow-2xl"
         style={glow}
       >
-        {/* logo + name */}
+        {/* logo + nazwa */}
         <div className="flex items-center gap-3">
-          {logoSrc ? (
+          {imgOk ? (
             <img
-              src={logoSrc}
+              src={appLogo}
               alt={`${appName} logo`}
               className="h-10 w-10 rounded-xl object-contain"
               draggable={false}
+              onError={() => setImgOk(false)}
             />
           ) : (
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-400" />
@@ -129,7 +127,7 @@ export default function SplashScreen({
           </h1>
         </div>
 
-        {/* subtle motion icon */}
+        {/* ikona pulsująca */}
         <div
           className={`mt-1 text-4xl ${reduceMotion ? "" : "animate-pulse"}`}
           aria-hidden
@@ -137,12 +135,11 @@ export default function SplashScreen({
           <CurrentIcon className="drop-shadow-lg" />
         </div>
 
-        {/* sr hint */}
         <span className="sr-only" role="status">
           Loading
         </span>
 
-        {/* progress bar */}
+        {/* progress */}
         <div
           className="mt-2 w-full h-1.5 rounded-full bg-white/10 overflow-hidden"
           role="progressbar"
