@@ -15,7 +15,6 @@ export default function SplashScreen({
   const [currentIconIndex, setCurrentIconIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [reduceMotion, setReduceMotion] = useState(false);
-  const [imgOk, setImgOk] = useState(true);
   const doneRef = useRef(false);
 
   const toRgba = (hex, a = 1) => {
@@ -69,9 +68,10 @@ export default function SplashScreen({
   }, [duration]);
 
   const finish = () => {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    onFinish?.();
+    if (!doneRef.current) {
+      doneRef.current = true;
+      onFinish?.();
+    }
   };
 
   const CurrentIcon = icons[currentIconIndex];
@@ -109,25 +109,18 @@ export default function SplashScreen({
         className="relative z-10 flex w-[min(92vw,420px)] flex-col items-center gap-4 rounded-2xl bg-slate-900/70 p-6 backdrop-blur-md ring-1 ring-white/10 shadow-2xl"
         style={glow}
       >
-        {/* logo + nazwa */}
         <div className="flex items-center gap-3">
-          {imgOk ? (
-            <img
-              src={appLogo}
-              alt={`${appName} logo`}
-              className="h-10 w-10 rounded-xl object-contain"
-              draggable={false}
-              onError={() => setImgOk(false)}
-            />
-          ) : (
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-cyan-400 to-emerald-400" />
-          )}
+          <img
+            src={appLogo}
+            alt={`${appName} logo`}
+            className="h-10 w-10 rounded-xl object-contain"
+            draggable={false}
+          />
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-teal-200">
             {appName}
           </h1>
         </div>
 
-        {/* ikona pulsująca */}
         <div
           className={`mt-1 text-4xl ${reduceMotion ? "" : "animate-pulse"}`}
           aria-hidden
@@ -135,11 +128,10 @@ export default function SplashScreen({
           <CurrentIcon className="drop-shadow-lg" />
         </div>
 
-        <span className="sr-only" role="status">
+        <div className="sr-only" role="status">
           Loading
-        </span>
+        </div>
 
-        {/* progress */}
         <div
           className="mt-2 w-full h-1.5 rounded-full bg-white/10 overflow-hidden"
           role="progressbar"
