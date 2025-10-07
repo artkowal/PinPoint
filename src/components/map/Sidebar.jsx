@@ -1,6 +1,5 @@
-// src/components/map/Sidebar.jsx
 import React, { useMemo } from "react";
-import artKowalLogo from "../../assets/artkowal-logo-white.png";
+import artKowalLogo from "../../assets/artKowal-logo-white.png";
 import appLogo from "../../assets/logo.png";
 
 export const SIDEBAR_WIDTH = 220;
