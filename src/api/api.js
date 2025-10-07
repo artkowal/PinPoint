@@ -1,9 +1,5 @@
 import axios from "axios";
 
-/**
- * Klient do Wikipedia API (PL), z domyślnymi parametrami i wsparciem AbortController.
- * Używaj: wikiQuery({ action: "query", ... }, signal)
- */
 export const WIKI_ENDPOINT = "https://pl.wikipedia.org/w/api.php";
 
 export async function wikiQuery(params = {}, signal) {
@@ -14,7 +10,7 @@ export async function wikiQuery(params = {}, signal) {
     ...params,
   };
 
-  // mały retry na wypadek flakiness (1 dodatkowa próba)
+  // retry na wypadek flakiness (1 dodatkowa próba)
   let lastErr = null;
   for (let i = 0; i < 2; i++) {
     try {
@@ -27,7 +23,6 @@ export async function wikiQuery(params = {}, signal) {
     } catch (err) {
       lastErr = err;
       const status = err?.response?.status;
-      // przy 4xx (poza 429) nie ma sensu ponawiać
       if (status && status < 500 && status !== 429) break;
       await new Promise((r) => setTimeout(r, 250));
     }
