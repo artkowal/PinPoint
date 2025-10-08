@@ -14,8 +14,7 @@
 
 ## 🔗 Live Demo
 
-**Demo:** https://artkowal.github.io/PinPoint/  
-_(Replace after you enable GitHub Pages — see deployment instructions below.)_
+**Demo:** https://artkowal.github.io/PinPoint/
 
 ---
 
