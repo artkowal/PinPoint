@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FaQuestion, FaTimes } from "react-icons/fa";
 import artKowalLogo from "../../assets/artKowal-logo-white.png";
 
-/* ===== helpers ===== */
+/* helpers */
 function toRgba(hex, a = 1) {
   const h = hex.replace("#", "");
   const full =
@@ -19,7 +19,6 @@ function toRgba(hex, a = 1) {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
-/* ===== teksty ===== */
 const DICT = {
   pl: {
     title: "O projekcie",
@@ -131,26 +130,35 @@ export default function AboutFab({
     [accent]
   );
 
-  // zamknij ESC i klik poza kartą
+  // ESC
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => e.key === "Escape" && setOpen(false);
-    const onClick = (e) =>
-      cardRef.current && !cardRef.current.contains(e.target) && setOpen(false);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("mousedown", onClick);
+      document.body.style.overflow = prev;
     };
+  }, [open]);
+
+  // fokus na kartę
+  useEffect(() => {
+    if (open) cardRef.current?.focus?.();
   }, [open]);
 
   return (
     <>
-      {/* FAB */}
+      {/* FAB – toggle */}
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((v) => !v)}
         aria-label={t.title}
+        aria-expanded={open}
         title={t.title}
         className="fixed right-2 bottom-6 z-[1600] h-10 w-10 rounded-full
                    bg-slate-900/85 ring-1 ring-white/15 backdrop-blur-xl
@@ -178,120 +186,135 @@ export default function AboutFab({
         />
       </button>
 
-      {/* Modal */}
+      {/* MODAL */}
       {open && (
         <div
-          className="fixed inset-0 z-[1550] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[1550] bg-black/40 backdrop-blur-sm overflow-y-auto overscroll-contain"
           role="dialog"
           aria-modal="true"
           aria-label={t.title}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
         >
-          <div
-            ref={cardRef}
-            className="relative w-full max-w-[720px] rounded-2xl bg-slate-900/80 ring-1 ring-white/10 shadow-2xl text-white overflow-hidden"
-          >
-            {/* glow */}
+          <div className="min-h-full flex items-center justify-center p-4 sm:p-6">
             <div
-              aria-hidden
-              className="pointer-events-none absolute -top-10 -left-10 h-56 w-56 rounded-full blur-3xl opacity-30"
-              style={glowA}
-            />
-            <div
-              aria-hidden
-              className="pointer-events-none absolute -bottom-10 -right-10 h-48 w-48 rounded-full blur-3xl opacity-25"
-              style={glowB}
-            />
-
-            {/* header */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10">
+              ref={cardRef}
+              tabIndex={-1}
+              className="relative w-full max-w-[720px] flex flex-col
+                         rounded-2xl bg-slate-900/80 ring-1 ring-white/10
+                         shadow-2xl text-white overflow-hidden"
+              style={{ maxHeight: "min(90svh, 90dvh, 85vh)" }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {/* glow */}
               <div
-                className="flex items-center gap-2 font-semibold"
-                style={{ color: toRgba(accent, 0.9) }}
-              >
-                <FaQuestion /> {t.title}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-white/70">{t.languageLabel}</span>
-                <button
-                  onClick={() => setLang((p) => (p === "pl" ? "en" : "pl"))}
-                  className="h-8 px-2 rounded-lg bg-white/10 hover:bg-white/15 grid place-items-center text-base"
-                  title={t.langSwitchTitle}
-                  aria-label="Language"
-                >
-                  <span role="img" aria-hidden="true">
-                    {t.flag}
-                  </span>
-                </button>
-                <button
-                  onClick={() => setOpen(false)}
-                  aria-label={t.close}
-                  className="h-8 w-8 rounded-lg bg-white/10 hover:bg-white/15 grid place-items-center"
-                >
-                  <FaTimes />
-                </button>
-              </div>
-            </div>
-
-            {/* content */}
-            <div className="px-4 py-4 space-y-4">
-              <p className="text-sm text-white/85">{t.intro}</p>
-
-              <section>
-                <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
-                  {t.techTitle}
-                </div>
-                <ul className="text-sm text-white/90 list-disc pl-5 space-y-1">
-                  {t.tech.map((li, i) => (
-                    <li key={i}>{li}</li>
-                  ))}
-                </ul>
-              </section>
-
-              <section>
-                <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
-                  {t.howTitle}
-                </div>
-                <ol className="text-sm text-white/90 list-decimal pl-5 space-y-1">
-                  {t.how.map((li, i) => (
-                    <li key={i}>{li}</li>
-                  ))}
-                </ol>
-              </section>
-
-              <section style={{ "--accent": accent }}>
-                <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
-                  {t.linksTitle}
-                </div>
-
-                <ul className="text-sm list-disc pl-5 space-y-1 marker:text-[var(--accent)]">
-                  {t.links.map((link, i) => (
-                    <li key={i}>
-                      <a
-                        href={link.href}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-[var(--accent)] visited:text-[var(--accent)] hover:underline decoration-[var(--accent)]"
-                      >
-                        {link.label}
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
-
-            {/* footer */}
-            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-center gap-2">
-              <img
-                src={logoSrc}
-                alt="artKowal"
-                className="h-4 w-auto opacity-90"
-                draggable="false"
+                aria-hidden
+                className="pointer-events-none absolute -top-10 -left-10 h-56 w-56 rounded-full blur-3xl opacity-30"
+                style={glowA}
               />
-              <div className="text-[11px] font-medium text-white/85 tracking-wide">
-                {t.by}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -bottom-10 -right-10 h-48 w-48 rounded-full blur-3xl opacity-25"
+                style={glowB}
+              />
+
+              {/* HEADER */}
+              <div className="flex-none sticky top-0 z-10 px-4 py-3 border-b border-white/10 bg-slate-900">
+                <div className="flex items-center justify-between gap-2">
+                  <div
+                    className="flex items-center gap-2 font-semibold"
+                    style={{ color: toRgba(accent, 0.9) }}
+                  >
+                    <FaQuestion /> {t.title}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white/70">
+                      {t.languageLabel}
+                    </span>
+                    <button
+                      onClick={() => setLang((p) => (p === "pl" ? "en" : "pl"))}
+                      className="h-8 px-2 rounded-lg bg-white/10 hover:bg-white/15 grid place-items-center text-base"
+                      title={t.langSwitchTitle}
+                      aria-label="Language"
+                    >
+                      <span role="img" aria-hidden="true">
+                        {t.flag}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setOpen(false)}
+                      aria-label={t.close}
+                      className="h-8 w-8 rounded-lg bg-white/10 hover:bg-white/15 grid place-items-center"
+                    >
+                      <FaTimes />
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="text-[11px] text-white/60">{t.copy}</div>
+
+              {/* CONTENT */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+                <p className="text-sm text-white/85">{t.intro}</p>
+
+                <section>
+                  <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
+                    {t.techTitle}
+                  </div>
+                  <ul className="text-sm text-white/90 list-disc pl-5 space-y-1">
+                    {t.tech.map((li, i) => (
+                      <li key={i}>{li}</li>
+                    ))}
+                  </ul>
+                </section>
+
+                <section>
+                  <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
+                    {t.howTitle}
+                  </div>
+                  <ol className="text-sm text-white/90 list-decimal pl-5 space-y-1">
+                    {t.how.map((li, i) => (
+                      <li key={i}>{li}</li>
+                    ))}
+                  </ol>
+                </section>
+
+                <section style={{ "--accent": accent }}>
+                  <div className="text-xs uppercase tracking-wider text-white/60 mb-2">
+                    {t.linksTitle}
+                  </div>
+                  <ul className="text-sm list-disc pl-5 space-y-1 marker:text-[var(--accent)]">
+                    {t.links.map((link, i) => (
+                      <li key={i}>
+                        <a
+                          href={link.href}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[var(--accent)] visited:text-[var(--accent)] hover:underline decoration-[var(--accent)]"
+                        >
+                          {link.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </div>
+
+              {/* FOOTER */}
+              <div className="flex-none sticky bottom-0 z-10 px-4 py-3 border-t border-white/10 bg-slate-900">
+                <div className="flex items-center justify-center gap-2">
+                  <img
+                    src={logoSrc}
+                    alt="artKowal"
+                    className="h-4 w-auto opacity-90"
+                    draggable="false"
+                  />
+                  <div className="text-[11px] font-medium text-white/85 tracking-wide">
+                    {t.by}
+                  </div>
+                  <div className="text-[11px] text-white/60">{t.copy}</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
